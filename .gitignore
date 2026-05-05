@@ -1,0 +1,16 @@
+# Go
+
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+*.swo
+*.prof
+.DS_Store
+*.out
+.env
+.vscode/
+coverage.txt
+*.test
