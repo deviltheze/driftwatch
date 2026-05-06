@@ -3,78 +3,92 @@ package drift
 import (
 	"crypto/sha256"
 	"fmt"
-	"strings"
 
-	"github.com/yourusername/driftwatch/internal/ssh"
+	"github.com/user/driftwatch/internal/config"
+	"github.com/user/driftwatch/internal/ssh"
 )
 
-// FileState represents the state of a file on a remote host.
-type FileState struct {
-	Host     string
-	Path     string
-	Checksum string
-	Missing  bool
-}
-
-// Result holds the drift detection result for a single host+file pair.
+// Result holds the drift check outcome for a single file on a single host.
 type Result struct {
 	Host     string
-	Path     string
-	Drifted  bool
-	Baseline string
+	FilePath string
+	Expected string
 	Actual   string
 	Err      error
 }
 
-// Checker detects configuration drift by comparing remote file checksums
-// against a known baseline.
+// Drifted returns true if the actual content differs from expected or an error occurred.
+func (r Result) Drifted() bool {
+	return r.Err != nil || r.Expected != r.Actual
+}
+
+// Report aggregates results from all hosts.
+type Report struct {
+	Results []Result
+}
+
+// HasDrift returns true if any result in the report has drifted.
+func (r Report) HasDrift() bool {
+	for _, res := range r.Results {
+		if res.Drifted() {
+			return true
+		}
+	}
+	return false
+}
+
+// DriftedCount returns the number of drifted results.
+func (r Report) DriftedCount() int {
+	count := 0
+	for _, res := range r.Results {
+		if res.Drifted() {
+			count++
+		}
+	}
+	return count
+}
+
+// WriteFunc is a function used by Reporter to output a report.
+type WriteFunc func(Report) error
+
+// Checker performs file hash comparisons against expected baselines.
 type Checker struct {
-	runner *ssh.Runner
+	baselines map[string]string
 }
 
-// NewChecker creates a new Checker using the provided SSH runner.
-func NewChecker(runner *ssh.Runner) *Checker {
-	return &Checker{runner: runner}
+// NewChecker creates a Checker with the given baseline hashes keyed by file path.
+func NewChecker(baselines map[string]string) *Checker {
+	if baselines == nil {
+		baselines = make(map[string]string)
+	}
+	return &Checker{baselines: baselines}
 }
 
-// FetchChecksum retrieves the SHA-256 checksum of a file on the remote host.
-func (c *Checker) FetchChecksum(path string) (string, error) {
-	results, err := c.runner.Run([]string{fmt.Sprintf("sha256sum %s", path)})
-	if err != nil {
-		return "", fmt.Errorf("failed to run checksum command: %w", err)
-	}
-	if len(results) == 0 {
-		return "", fmt.Errorf("no results returned for path %s", path)
-	}
-	result := results[0]
-	if result.ExitCode != 0 {
-		return "", fmt.Errorf("checksum command failed: %s", result.Stderr)
-	}
-	parts := strings.Fields(result.Stdout)
-	if len(parts) == 0 {
-		return "", fmt.Errorf("unexpected sha256sum output: %q", result.Stdout)
-	}
-	return parts[0], nil
-}
-
-// CheckDrift compares the remote file checksum against the provided baseline.
-func (c *Checker) CheckDrift(host, path, baseline string) Result {
-	actual, err := c.FetchChecksum(path)
-	if err != nil {
-		return Result{Host: host, Path: path, Err: err}
-	}
-	return Result{
-		Host:     host,
-		Path:     path,
-		Drifted:  actual != baseline,
-		Baseline: baseline,
-		Actual:   actual,
-	}
-}
-
-// HashContent computes the SHA-256 hex digest of the given content string.
-// Useful for generating baselines from known-good file contents.
+// HashContent returns a SHA-256 hex digest of the given content.
 func HashContent(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return fmt.Sprintf("%x", sum)
+}
+
+// CheckFiles runs remote cat commands for each watched file on the given host.
+func (c *Checker) CheckFiles(host config.Host, runner *ssh.Runner) []Result {
+	var results []Result
+	for _, fp := range host.WatchFiles {
+		cmdResult := runner.Run([]string{"cat", fp})
+		actualHash := HashContent(cmdResult.Stdout)
+		expected := c.baselines[fp]
+		results = append(results, Result{
+			Host:     host.Address,
+			FilePath: fp,
+			Expected: expected,
+			Actual:   actualHash,
+			Err:      cmdResult.Err,
+		})
+	}
+	return results
+}
+
+// BuildReport wraps a slice of results into a Report.
+func (c *Checker) BuildReport(results []Result) Report {
+	return Report{Results: results}
 }
