@@ -60,14 +60,29 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// HostByName returns the Host with the given name, or an error if not found.
+func (c *Config) HostByName(name string) (*Host, error) {
+	for i := range c.Hosts {
+		if c.Hosts[i].Name == name {
+			return &c.Hosts[i], nil
+		}
+	}
+	return nil, fmt.Errorf("host %q not found in config", name)
+}
+
 func (c *Config) validate() error {
 	if len(c.Hosts) == 0 {
 		return fmt.Errorf("at least one host must be defined")
 	}
+	hostNames := make(map[string]struct{}, len(c.Hosts))
 	for _, h := range c.Hosts {
 		if h.Name == "" {
 			return fmt.Errorf("host is missing a name")
 		}
+		if _, dup := hostNames[h.Name]; dup {
+			return fmt.Errorf("duplicate host name %q", h.Name)
+		}
+		hostNames[h.Name] = struct{}{}
 		if h.Address == "" {
 			return fmt.Errorf("host %q is missing an address", h.Name)
 		}
@@ -81,6 +96,11 @@ func (c *Config) validate() error {
 		}
 		if ch.Path == "" {
 			return fmt.Errorf("check %q is missing a path", ch.Name)
+		}
+		for _, hname := range ch.Hosts {
+			if _, ok := hostNames[hname]; !ok {
+				return fmt.Errorf("check %q references unknown host %q", ch.Name, hname)
+			}
 		}
 	}
 	return nil
