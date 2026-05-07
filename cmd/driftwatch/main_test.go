@@ -40,6 +40,21 @@ func TestMain_MissingConfig(t *testing.T) {
 	}
 }
 
+func TestMain_UnknownFlag(t *testing.T) {
+	if os.Getenv("RUN_MAIN") == "1" {
+		os.Args = []string{"driftwatch", "-unknownflag"}
+		main()
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_UnknownFlag")
+	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit for unknown flag, got nil")
+	}
+}
+
 func TestVersion_Default(t *testing.T) {
 	if version != "dev" {
 		t.Errorf("expected default version 'dev', got %q", version)
