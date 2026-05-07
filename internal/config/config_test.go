@@ -98,3 +98,17 @@ func TestLoad_FileNotFound(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 }
+
+func TestLoad_MissingHostName(t *testing.T) {
+	content := `
+hosts:
+  - address: 192.168.1.20
+    user: root
+checks: []
+`
+	path := writeTempConfig(t, content)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error for missing host name")
+	}
+}
