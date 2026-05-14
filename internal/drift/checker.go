@@ -48,6 +48,17 @@ func (r Report) DriftedCount() int {
 	return count
 }
 
+// DriftedResults returns only the results that have drifted or errored.
+func (r Report) DriftedResults() []Result {
+	var drifted []Result
+	for _, res := range r.Results {
+		if res.Drifted() {
+			drifted = append(drifted, res)
+		}
+	}
+	return drifted
+}
+
 // WriteFunc is a function used by Reporter to output a report.
 type WriteFunc func(Report) error
 
