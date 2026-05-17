@@ -60,3 +60,19 @@ func TestRunner_Run_EmptyCommands(t *testing.T) {
 		t.Errorf("expected 0 results for empty command list, got %d", len(results))
 	}
 }
+
+func TestRunner_Run_ResultCountMatchesCommands(t *testing.T) {
+	// Verify that Run returns exactly one result per command, even when
+	// execution fails due to a nil client.
+	r := NewRunner(nil, "host-c")
+	cmds := []string{"uname -r", "uptime", "hostname"}
+	results := r.Run(cmds)
+	if len(results) != len(cmds) {
+		t.Errorf("expected %d results, got %d", len(cmds), len(results))
+	}
+	for _, res := range results {
+		if res.Host != "host-c" {
+			t.Errorf("expected host 'host-c', got %q", res.Host)
+		}
+	}
+}
